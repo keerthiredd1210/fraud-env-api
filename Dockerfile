@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "import gymnasium; print('gymnasium', gymnasium.__version__, 'OK')"
 
 COPY models.py .
-COPY environment.py
+COPY environment.py .
 COPY inference.py .
 COPY app.py .
 COPY openenv.yaml .
