@@ -1,0 +1,264 @@
+---
+title: Fraud Env Api
+emoji: 💻
+colorFrom: indigo
+colorTo: blue
+sdk: gradio
+sdk_version: 6.11.0
+app_file: app.py
+pinned: false
+---
+<!-- badges -->
+![Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python)
+![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-Compliant-brightgreen)
+![License MIT](https://img.shields.io/badge/License-MIT-yellow)
+![HF Space](https://img.shields.io/badge/🤗%20HuggingFace-Space-orange)
+![Gymnasium](https://img.shields.io/badge/Gymnasium-1.0-purple)
+
+# Financial Fraud Defender
+
+> **Built for the Meta PyTorch OpenEnv Hackathon — April 2026**
+
+A production-grade Reinforcement Learning environment where an AI agent
+processes a live stream of financial transactions and decides to **APPROVE**,
+**BLOCK**, or **VERIFY via OTP** — exactly like fraud detection systems at
+Razorpay, Stripe, and Visa that run **65,000 decisions per second** against
+**$32 billion in annual fraud losses**. The asymmetric reward function teaches
+agents that requesting OTP verification is often smarter than an outright block,
+mirroring the nuanced cost trade-offs real fraud teams face every day.
+
+---
+
+## Why This Is Real-World
+
+| Fact | Source |
+|------|--------|
+| Visa processes 65,000 tx/sec at peak | Visa Inc. Annual Report |
+| Global card fraud losses: $32B/year | Nilson Report 2024 |
+| False decline costs banks $118B/year | Javelin Strategy |
+| OTP step-up reduces fraud 90%+ with <2% friction | Industry benchmark |
+
+This environment models the exact asymmetry production systems face: **missing
+fraud costs 2× more than a false block**, and **OTP verification is almost
+free** for legitimate customers. An agent that learns this wins.
+
+---
+
+## RL Loop
+
+┌─────────────────────────────────────────────────────────────┐
+│ EPISODE (20 transactions) │
+│ │
+│ ┌──────────┐ 14-feature ┌─────────────────────┐ │
+│ │ Fraud │ ──observation──▶ │ RL AGENT │ │
+│ │ Engine │ │ (LLM / │ │
+│ │ │ ◀── action │ rule-based │ │
+│ │ generates│ (0/1/2) │ / random) │ │
+│ │ stream │ ──reward────────▶ │ │
+│ └──────────┘ └─────────────────────┘ │ │
+│ │ │
+│ is_fraud? reward table ▼ │ │
+│ velocity? ─▶ APPROVE+legit=+0.50 episode_history │ │
+│ location? BLOCK+fraud =+1.00 │ │
+│ card? VERIFY+fraud=+0.70 ▼ │ │
+│ risk_score… grader(task) │ │
+│ score ∈ │ │
+└─────────────────────────────────────────────────────────────┘
+
+
+---
+
+## Actions
+
+| ID | Name | Description |
+|----|------|-------------|
+| 0 | **APPROVE** | Transaction approved as legitimate |
+| 1 | **BLOCK** | Transaction blocked as suspected fraud |
+| 2 | **VERIFY** | OTP step-up sent to cardholder — smart middle ground |
+**Action Space:** Discrete(3) → {0: APPROVE, 1: BLOCK, 2: VERIFY} 
+---
+
+## Reward Matrix
+
+| Action | Legit outcome | Fraud outcome |
+|--------|:-------------:|:-------------:|
+| APPROVE | **+0.50** | **-1.00** ← worst (real financial loss) |
+| BLOCK | **-0.50** | **+1.00** ← best fraud catch |
+| VERIFY | **-0.10** ← almost free | **+0.70** ← smart catch |
+
+> Key insight: missing fraud costs **2x** a false block. When uncertain → VERIFY.
+
+---
+
+## Tasks
+
+| Task | Fraud Rate | Metric | Pass Threshold | Grader |
+|------|:----------:|--------|:--------------:|--------|
+| `easy` | 15% | Recall | ≥ 0.65 | `environment:compute_grade` |
+| `medium` | 30% | F1 Score | ≥ 0.70 | `environment:compute_grade` |
+| `hard` | 50% | Composite (F1 − 0.3×FPR) | ≥ 0.72 | `environment:compute_grade` |
+
+Each episode generates a **unique user profile** (spending habits, usual hours,
+preferred merchant categories, home location) then streams 20 transactions with
+the fraud rate matching the selected task.
+
+---
+
+## Observation Space — 14 Features (Box, float32)
+
+**Observation Space:** Box(14,), dtype=float32
+
+| # | Feature | Type | Range | Description |
+|---|---------|------|-------|-------------|
+| 0 | `amount` | float | [0, 10000] | Transaction amount in USD |
+| 1 | `hour_of_day` | float | [0, 1] | Hour normalised (0=midnight, 1=23:00) |
+| 2 | `location_match` | binary | {0, 1} | 1 = user's home city |
+| 3 | `transactions_last_hour` | float | [0, 20] | Velocity count |
+| 4 | `is_new_merchant` | binary | {0, 1} | 1 = never transacted here before |
+| 5 | `risk_score` | float | [0, 10] | Pre-computed composite risk score |
+| 6 | `step` | float | [0, 19] | Current episode step index |
+| 7 | `merchant_category_index` | float | [0, 7] | 0=groceries…7=other |
+| 8 | `velocity_ratio` | float | [0, 20] | Amount ÷ user's historical average |
+| 9 | `time_since_last_txn` | float | [0, 1440] | Minutes since previous transaction |
+| 10 | `card_present` | binary | {0, 1} | 1 = physical card (POS), 0 = online |
+| 11 | `last_action_1` | float | [-1, 2] | Agent's decision at t-1 (-1 if none) |
+| 12 | `last_action_2` | float | [-1, 2] | Agent's decision at t-2 |
+| 13 | `last_action_3` | float | [-1, 2] | Agent's decision at t-3 |
+
+---
+
+## Agent Comparison
+
+| Agent | Easy Recall | Easy Score | Medium F1 | Hard Composite |
+|-------|:-----------:|:----------:|:---------:|:--------------:|
+| **LLM (gpt-4o-mini)** | ~0.87 | ~0.85+ | ~0.74 | ~0.73 |
+| Rule-based (fallback) | ~0.80 | ~0.80 | ~0.70 | ~0.65 |
+| Random baseline | ~0.50 | ~0.44 | ~0.40 | ~0.35 |
+
+The LLM agent uses a 3-shot prompt with explicit cost asymmetry, hard rules
+(velocity > 3x + no card → always BLOCK), and time-based caution escalation
+(< 2 min since last tx → step up one level). The rule-based agent works with
+zero API keys and serves as a reliable fallback.
+
+---
+
+## Setup
+
+### Local (Python)
+
+```bash
+git clone https://github.com/keerthiredd1210/fraud-env-api
+cd fraud-env-api
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 7860
+open http://localhost:7860/demo
+```
+
+### Docker
+
+```bash
+docker build -t financial-fraud-defender .
+docker run -p 7860:7860 financial-fraud-defender
+```
+
+```bash
+# With LLM agent
+docker run -p 7860:7860 \
+  -e OPENAI_API_KEY=sk-... \
+  -e MODEL_NAME=gpt-4o-mini \
+  financial-fraud-defender
+```
+
+### Hugging Face Space
+[![Hugging Face Space](https://keerthiireddy-fraud-env-api.hf.space)](https://keerthiireddy-fraud-env-api.hf.space)
+
+Interactive demo at `/demo` — play manually or watch agents run step-by-step.
+
+### API Endpoints
+**Base URL:** `http://localhost:7860` (or your HF Space URL)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/reset` | Start new episode; returns 14-float observation |
+| POST | `/step` | Submit action (0/1/2); returns obs, reward, done |
+| GET | `/state` | Current episode state and history |
+| GET | `/health` | Liveness check → `{"status":"ok"}` |
+| GET | `/tasks` | All task definitions with metrics and thresholds |
+| POST | `/grader` | Grade episode history; returns score in [0, 1] |
+| POST | `/baseline` | Rule-based agent on all 3 tasks in < 1 second |
+| GET | `/demo` | Gradio interactive UI |
+| GET | `/` | HTML landing page |
+
+#### curl Examples
+```bash
+BASE="https://keerthiireddy-fraud-env-api.hf.space"
+
+# Health check
+curl -s "$BASE/health" | python3 -m json.tool
+
+# Start episode
+curl -s -X POST "$BASE/reset" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"medium","seed":42}' | python3 -m json.tool
+
+# Take action: VERIFY (2)
+curl -s -X POST "$BASE/step" \
+  -H "Content-Type: application/json" \
+  -d '{"action":2}' | python3 -m json.tool
+```
+
+#### How to Run inference.py
+```bash
+# Rule-based agent — no API key needed
+python inference.py --task easy --agent rule_based --seed 42
+
+# LLM agent (requires OPENAI_API_KEY)
+export OPENAI_API_KEY=sk-...
+python inference.py --task medium --agent llm --seed 42
+```
+
+**Mandatory stdout format:**
+[START] task=easy env=financial-fraud-defender-v1 model=rule_based
+[STEP] step=1 action=APPROVE reward=0.50 done=false error=null
+[STEP] step=20 action=APPROVE reward=0.50 done=true error=null
+[END] success=true steps=20 score=1.00 rewards=0.50,0.70,...
+
+
+### Gymnasium Usage
+```python
+from environment import FraudDetectionEnv, compute_grade
+
+env = FraudDetectionEnv()
+obs, info = env.reset()
+
+for step in range(20):
+    action = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(action)
+    if terminated:
+        break
+
+grade = compute_grade("hard", env._episode_history)
+print(f"Score: {grade['score']:.4f}")
+```
+
+## File Structure
+fraud-env-api/
+├── models.py Pydantic schemas
+├── environment.py Gymnasium env + compute_grade()
+├── inference.py LLM, rule_based, random agents
+├── app.py FastAPI + Gradio UI
+├── openenv.yaml OpenEnv v2.0.0 spec
+├── Dockerfile
+├── requirements.txt
+└── README.md
+
+
+## Environment Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible base URL |
+| `MODEL_NAME` | `gpt-4o-mini` | LLM model |
+| `OPENAI_API_KEY` | — | Required only for LLM agent |
+
+## License
+MIT — see [LICENSE](LICENSE)
