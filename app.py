@@ -90,7 +90,6 @@ def state():
 def health():
     return HealthResponse(status="ok", version="1.0.0", tasks=list(TASK_DEFINITIONS.keys()))
 
-# ✅ FIXED tasks format (validator-safe)
 @app.get("/tasks")
 def tasks():
     return {
@@ -134,10 +133,10 @@ def baseline():
         results[task] = compute_grade(task, env._episode_history)
 
     return {
-    "tasks": results,
-    "model": "rule-based-fallback",
-    "timestamp": datetime.now(timezone.utc).isoformat()
-}
+        "tasks": results,
+        "model": "rule-based-fallback",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
 
 # ---------------- GRADIO ----------------
 
@@ -186,6 +185,7 @@ def _build_gradio_app():
     def auto_fn(task):
         res = run_episode(task=task, agent="rule_based")
 
+        import pandas as pd
         df = pd.DataFrame(res["episode_history"])
         rewards = [h["reward"] for h in res["episode_history"]]
 
@@ -195,6 +195,7 @@ def _build_gradio_app():
             pd.DataFrame({"reward": rewards})
         )
 
+    import gradio as gr
     with gr.Blocks() as demo:
         gr.Markdown("# 🛡️ Financial Fraud Defender")
 
@@ -236,9 +237,16 @@ import gradio as gr
 app = gr.mount_gradio_app(app, _build_gradio_app(), path="/demo")
 
 # ---------------- RUN ----------------
+
 def serve():
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=7860, log_level="info")
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=7860,
+        log_level="info",
+        loop="asyncio"   # 🔥 FINAL FIX
+    )
 
 def main():
     serve()
