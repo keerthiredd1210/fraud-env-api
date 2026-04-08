@@ -58,8 +58,8 @@ def root():
 
 # ---------------- API ----------------
 
-@app.post("/reset", response_model=ResetResponse)
-def reset(req: ResetRequest):
+@app.post("/reset")
+def reset(req: ResetRequest = ResetRequest()):
     global _env, _current_obs
     _env = FraudDetectionEnv(task=req.task, seed=req.seed)
     obs, info = _env.reset(seed=req.seed)
