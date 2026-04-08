@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
@@ -41,7 +42,11 @@ async def lifespan(app: FastAPI):
     print("API stopping...", flush=True)
 
 
-app = FastAPI(title="Financial Fraud Defender", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Financial Fraud Defender",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 # ---------------- ROOT ----------------
 
@@ -118,7 +123,7 @@ def grader(req: GraderRequest):
 
 @app.post("/baseline")
 def baseline():
-    from inference import rule_based_action
+    from inference import rule_based_action  # safe local import
 
     results = {}
     for task in ("easy", "medium", "hard"):
@@ -184,7 +189,12 @@ def _build_gradio_app():
         )
 
     def auto_fn(task):
-        res = run_episode(task=task, agent="rule_based")
+        # 🔒 SAFE import (prevents validator crash)
+        try:
+            from inference import run_episode
+            res = run_episode(task=task, agent="rule_based")
+        except Exception:
+            return "Auto mode unavailable", None, None
 
         import pandas as pd
         df = pd.DataFrame(res["episode_history"])
@@ -246,11 +256,10 @@ def serve():
         host="0.0.0.0",
         port=7860,
         log_level="info",
-        loop="asyncio"   # 🔥 FINAL FIX
+        loop="asyncio"
     )
 
-def main():
-    serve()
 
+# ✅ FINAL FIX — ONLY this (no main())
 if __name__ == "__main__":
-    main()
+    serve()
