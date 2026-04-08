@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-# Fix uvloop/asyncio crash on Python 3.11
-import asyncio
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-
 import sys
 import traceback
 
@@ -15,11 +11,7 @@ import random
 import argparse
 from typing import Any, Dict, List, Optional
 
-"""
-inference.py — Financial Fraud Defender
-"""
-
-# ✅ SAFE IMPORTS
+# ✅ SAFE IMPORTS (NO sys.exit)
 try:
     from environment import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES
 except Exception:
@@ -27,15 +19,13 @@ except Exception:
         from environement import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES
     except Exception as e:
         print(f"[FATAL ERROR] Cannot import environment: {e}", flush=True)
-        print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
-        sys.exit(0)
+        raise e
 
 try:
     from models import Action, TASK_DEFINITIONS
 except Exception as e:
     print(f"[FATAL ERROR] Cannot import models: {e}", flush=True)
-    print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
-    sys.exit(0)
+    raise e
 
 API_BASE_URL: str = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME: str   = os.getenv("MODEL_NAME",   "gpt-4o-mini")
@@ -90,35 +80,45 @@ def run_episode(
     grade   = {}
 
     try:
+        print("🚀 Creating environment...", flush=True)
         env = FraudDetectionEnv(task=task, seed=seed)
-        obs_arr, _ = env.reset(seed=seed)
-        obs = obs_arr.tolist()
-        rng = random.Random(seed)
+        print("✅ Environment created", flush=True)
 
-        if verbose:
-            print(f"[START] task={task} env={ENV_BENCHMARK} model={agent}", flush=True)
+        print("🔄 Resetting environment...", flush=True)
+        result = env.reset(seed=seed)
+        print("📦 Reset result:", result, flush=True)
+
+        if isinstance(result, tuple):
+            obs_arr = result[0]
+        else:
+            obs_arr = result
+
+        if obs_arr is None:
+            raise ValueError("obs_arr is None")
+
+        if not hasattr(obs_arr, "tolist"):
+            raise ValueError(f"obs_arr has no tolist(): {type(obs_arr)}")
+
+        obs = obs_arr.tolist()
+        print("✅ Observation processed", flush=True)
+
+        rng = random.Random(seed)
 
         for step in range(20):
             try:
                 action = random_action(rng) if agent == "random" else rule_based_action(obs)
 
                 obs_arr, reward, terminated, truncated, info = env.step(action)
-                obs  = obs_arr.tolist()
+                obs = obs_arr.tolist()
                 done = terminated or truncated
 
-            except Exception:
+            except Exception as e:
+                print("❌ STEP ERROR:", str(e), flush=True)
                 action = int(Action.APPROVE)
                 reward = 0.0
                 done   = True
 
             all_rewards.append(reward)
-
-            if verbose:
-                print(
-                    f"[STEP] step={step + 1} action={Action(action).name} "
-                    f"reward={reward:.2f} done={'true' if done else 'false'} error=null",
-                    flush=True,
-                )
 
             if done:
                 break
@@ -131,33 +131,25 @@ def run_episode(
             score   = grade.get("score",  0.0)
             details = grade.get("details", {})
 
-        except Exception:
-            pass
+        except Exception as e:
+            print("❌ GRADING ERROR:", str(e), flush=True)
 
     except Exception as exc:
-        print(f"[ERROR] {exc}", flush=True)
+        print("❌ ENVIRONMENT CRASH:", str(exc), flush=True)
+        raise exc
 
     finally:
-        try:
-            rewards_str = ",".join(f"{r:.2f}" for r in all_rewards)
-
-            print(
-                f"[END] success={'true' if success else 'false'} "
-                f"steps={len(all_rewards)} score={score:.2f} rewards={rewards_str}",
-                flush=True,
-            )
-
-        except Exception:
-            print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
+        rewards_str = ",".join(f"{r:.2f}" for r in all_rewards)
+        print(f"[END] success={success} steps={len(all_rewards)} score={score:.2f} rewards={rewards_str}", flush=True)
 
     return {
-        "task":            task,
-        "agent":           agent,
-        "total_reward":    sum(all_rewards),
-        "steps":           len(all_rewards),
-        "score":           score,
-        "passed":          success,
-        "details":         details,
+        "task": task,
+        "agent": agent,
+        "total_reward": sum(all_rewards),
+        "steps": len(all_rewards),
+        "score": score,
+        "passed": success,
+        "details": details,
         "episode_history": history,
     }
 
@@ -165,29 +157,16 @@ def run_episode(
 def main() -> None:
     try:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--task",  default="easy", choices=["easy", "medium", "hard"])
-        parser.add_argument("--agent", default="rule_based", choices=["rule_based", "random", "llm"])
-        parser.add_argument("--seed",  type=int, default=None)
-        parser.add_argument("--quiet", action="store_true")
-
+        parser.add_argument("--task", default="easy")
+        parser.add_argument("--agent", default="rule_based")
+        parser.add_argument("--seed", type=int, default=None)
         args = parser.parse_args()
 
-        result = run_episode(
-            task=args.task,
-            agent=args.agent,
-            seed=args.seed,
-            verbose=not args.quiet,
-        )
-
-        if args.quiet:
-            print(json.dumps(result, indent=2))
+        run_episode(task=args.task, agent=args.agent, seed=args.seed)
 
     except Exception as e:
-        print("[FATAL ERROR]", str(e), flush=True)
+        print("❌ MAIN CRASH:", str(e), flush=True)
         traceback.print_exc()
-
-        print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
-        sys.exit(0)
 
 
 if __name__ == "__main__":
