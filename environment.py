@@ -5,6 +5,8 @@ Observation space : Box(14,) float32  (via Observation.to_numpy())
 Action space      : Discrete(3)       0=APPROVE 1=BLOCK 2=VERIFY
 Episode length    : 20 steps
 """
+import asyncio
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 from __future__ import annotations
 
 import random
