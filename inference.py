@@ -85,9 +85,21 @@ def run_episode(
     score = 0.0
 
     try:
-        # SAFE ENV CHECK
+        # SAFE ENV HANDLING
         if FraudDetectionEnv is None:
-            raise Exception("Environment not available")
+            print("[WARNING] Environment not available", flush=True)
+
+            print("[START]", flush=True)
+            print("[STEP] step=1 action=APPROVE reward=0.00 done=true error=env_missing", flush=True)
+            print("[END] success=false steps=1 score=0.00 rewards=0.00", flush=True)
+
+            return {
+                "task": task,
+                "total_reward": 0.0,
+                "steps": 1,
+                "score": 0.0,
+                "passed": False,
+            }
 
         env = FraudDetectionEnv(task=task, seed=seed)
 
