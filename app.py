@@ -11,7 +11,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from environment import FraudDetectionEnv, compute_grade
-from inference import run_episode
 from models import (
     Action,
     GraderRequest,
