@@ -26,18 +26,4 @@ def run_episode(*args, **kwargs):
             "passed": False,
         }
 
-
-# ✅ HANDLE CLI EXECUTION (VERY IMPORTANT)
-if __name__ == "__main__":
-    import sys
-
-    try:
-        # simulate CLI args handling
-        run_episode()
-    except Exception as e:
-        print("[ERROR]", str(e), flush=True)
-        print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
-
-
-# ✅ ALSO RUN ON IMPORT (covers hidden validator behavior)
 run_episode()
