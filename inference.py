@@ -4,6 +4,9 @@ from __future__ import annotations
 import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
+import sys
+import traceback
+
 print("[INFO] inference.py started", flush=True)
 
 import os
@@ -23,7 +26,6 @@ except Exception:
     try:
         from environement import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES
     except Exception as e:
-        import sys
         print(f"[FATAL ERROR] Cannot import environment: {e}", flush=True)
         print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
         sys.exit(0)
@@ -31,7 +33,6 @@ except Exception:
 try:
     from models import Action, TASK_DEFINITIONS
 except Exception as e:
-    import sys
     print(f"[FATAL ERROR] Cannot import models: {e}", flush=True)
     print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
     sys.exit(0)
@@ -62,7 +63,9 @@ def rule_based_action(obs: List[float]) -> int:
         ])
         if suspicious >= 2:
             return int(Action.VERIFY)
+
         return int(Action.APPROVE)
+
     except Exception:
         return int(Action.APPROVE)
 
@@ -98,9 +101,11 @@ def run_episode(
         for step in range(20):
             try:
                 action = random_action(rng) if agent == "random" else rule_based_action(obs)
+
                 obs_arr, reward, terminated, truncated, info = env.step(action)
                 obs  = obs_arr.tolist()
                 done = terminated or truncated
+
             except Exception:
                 action = int(Action.APPROVE)
                 reward = 0.0
@@ -121,9 +126,11 @@ def run_episode(
         try:
             history = getattr(env, "_episode_history", [])
             grade   = compute_grade(task, history)
+
             success = grade.get("passed", False)
             score   = grade.get("score",  0.0)
             details = grade.get("details", {})
+
         except Exception:
             pass
 
@@ -133,11 +140,13 @@ def run_episode(
     finally:
         try:
             rewards_str = ",".join(f"{r:.2f}" for r in all_rewards)
+
             print(
                 f"[END] success={'true' if success else 'false'} "
                 f"steps={len(all_rewards)} score={score:.2f} rewards={rewards_str}",
                 flush=True,
             )
+
         except Exception:
             print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
 
@@ -156,24 +165,29 @@ def run_episode(
 def main() -> None:
     try:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--task",  default="easy",      choices=["easy", "medium", "hard"])
+        parser.add_argument("--task",  default="easy", choices=["easy", "medium", "hard"])
         parser.add_argument("--agent", default="rule_based", choices=["rule_based", "random", "llm"])
         parser.add_argument("--seed",  type=int, default=None)
         parser.add_argument("--quiet", action="store_true")
+
         args = parser.parse_args()
 
         result = run_episode(
-            task=args.task, agent=args.agent,
-            seed=args.seed, verbose=not args.quiet,
+            task=args.task,
+            agent=args.agent,
+            seed=args.seed,
+            verbose=not args.quiet,
         )
+
         if args.quiet:
             print(json.dumps(result, indent=2))
 
-    except SystemExit:
-        raise
-    except Exception as exc:
-        print(f"[FATAL ERROR] {exc}", flush=True)
+    except Exception as e:
+        print("[FATAL ERROR]", str(e), flush=True)
+        traceback.print_exc()
+
         print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
