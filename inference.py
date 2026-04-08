@@ -282,13 +282,10 @@ def run_episode(
         raise
 
     client = None
-    if agent == "llm":
-        try:
-            from openai import OpenAI
-            client = OpenAI(
-                base_url=API_BASE_URL,
-                api_key=os.getenv("OPENAI_API_KEY", "dummy"),
-            )
+    client = OpenAI(
+    base_url=os.environ["API_BASE_URL"],   
+    api_key=os.environ["API_KEY"],         
+)
         except ImportError:
             agent = "rule_based"
 
@@ -340,8 +337,12 @@ def run_episode(
         if done:
             break
 
-    history     = env._episode_history
-    grade       = compute_grade(task, history)
+    history = getattr(env, "_episode_history", [])
+
+try:
+    grade = compute_grade(task, history)
+except:
+    grade = {"passed": False, "score": 0.0, "details": {}}
     rewards_str = ",".join(f"{r:.2f}" for r in all_rewards)
 
     if verbose:
@@ -374,7 +375,7 @@ def main() -> None:
         )
         parser.add_argument("--task",  default="easy",
                             choices=["easy", "medium", "hard"])
-        parser.add_argument("--agent", default="rule_based",
+        parser.add_argument("--agent", default="llm",
                             choices=["rule_based", "random", "llm"])
         parser.add_argument("--seed",  type=int, default=None)
         parser.add_argument("--quiet", action="store_true",
