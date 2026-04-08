@@ -271,6 +271,7 @@ def run_episode(
     seed:    Optional[int] = None,
     verbose: bool          = True,
 ) -> Dict[str, Any]:
+    env = None
     try:
         env = FraudDetectionEnv(task=task, seed=seed)
         obs_arr, _ = env.reset(seed=seed)
@@ -282,11 +283,15 @@ def run_episode(
         raise
 
     client = None
-    client = OpenAI(
-    base_url=os.environ["API_BASE_URL"],   
-    api_key=os.environ["API_KEY"],         
-)
-        except ImportError:
+    # FIX 1: Corrected OpenAI Client initialization
+    if agent == "llm":
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url=os.environ["API_BASE_URL"],
+                api_key=os.environ["API_KEY"],
+            )
+        except (ImportError, KeyError):
             agent = "rule_based"
 
     rng            = random.Random(seed)
@@ -337,12 +342,13 @@ def run_episode(
         if done:
             break
 
+    # FIX 3: Safe history and grading
     history = getattr(env, "_episode_history", [])
+    try:
+        grade = compute_grade(task, history)
+    except:
+        grade = {"passed": False, "score": 0.0, "details": {}}
 
-try:
-    grade = compute_grade(task, history)
-except:
-    grade = {"passed": False, "score": 0.0, "details": {}}
     rewards_str = ",".join(f"{r:.2f}" for r in all_rewards)
 
     if verbose:
@@ -375,6 +381,7 @@ def main() -> None:
         )
         parser.add_argument("--task",  default="easy",
                             choices=["easy", "medium", "hard"])
+        # FIX 2: Changed default agent to "llm"
         parser.add_argument("--agent", default="llm",
                             choices=["rule_based", "random", "llm"])
         parser.add_argument("--seed",  type=int, default=None)
