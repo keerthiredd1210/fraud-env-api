@@ -9,14 +9,23 @@ MANDATORY FORMAT:
 
 from __future__ import annotations
 
+print("🔥 inference.py loaded", flush=True)
+
 import os
-import re
 import json
 import random
 import argparse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from environment import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES
+# SAFE IMPORT (prevents crash)
+try:
+    from environment import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES
+except Exception as e:
+    print("ENV IMPORT ERROR:", e, flush=True)
+    FraudDetectionEnv = None
+    compute_grade = None
+    MERCHANT_CATEGORIES = None
+
 from models import Action, TASK_DEFINITIONS
 
 
@@ -76,7 +85,12 @@ def run_episode(
     score = 0.0
 
     try:
+        # SAFE ENV CHECK
+        if FraudDetectionEnv is None:
+            raise Exception("Environment not available")
+
         env = FraudDetectionEnv(task=task, seed=seed)
+
         obs_arr, _ = env.reset(seed=seed)
         obs = obs_arr.tolist()
 
@@ -86,7 +100,6 @@ def run_episode(
             print(f"[START] task={task} env={ENV_BENCHMARK} model={agent}", flush=True)
 
         for step in range(20):
-
             try:
                 if agent == "random":
                     action = random_action(rng)
@@ -116,12 +129,13 @@ def run_episode(
             if done:
                 break
 
-        # SAFE grading
+        # SAFE GRADING
         try:
             history = getattr(env, "_episode_history", [])
-            grade = compute_grade(task, history)
-            success = grade.get("passed", False)
-            score = grade.get("score", 0.0)
+            if compute_grade is not None:
+                grade = compute_grade(task, history)
+                success = grade.get("passed", False)
+                score = grade.get("score", 0.0)
         except Exception:
             success = False
             score = 0.0
