@@ -1,4 +1,5 @@
-print("[INFO] inference.py started", flush=True)
+import asyncio
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())print("[INFO] inference.py started", flush=True)
 
 def run_episode(*args, **kwargs):
     try:
