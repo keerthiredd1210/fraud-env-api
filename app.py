@@ -236,7 +236,9 @@ import gradio as gr
 app = gr.mount_gradio_app(app, _build_gradio_app(), path="/demo")
 
 # ---------------- RUN ----------------
+def serve():
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=7860, log_level="info")
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    serve()
