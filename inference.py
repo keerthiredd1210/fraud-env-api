@@ -1,6 +1,6 @@
 print("[INFO] inference.py started", flush=True)
 
-# ✅ ADD THIS FUNCTION (fixes your error)
+# ✅ required for app.py
 def run_episode(*args, **kwargs):
     return {
         "task": "easy",
@@ -24,5 +24,5 @@ def main():
         print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
 
 
-if __name__ == "__main__":
-    main()
+# 🚨 FORCE EXECUTION (this is the fix)
+main()
