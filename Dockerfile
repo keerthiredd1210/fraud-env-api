@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt.
 
 # Install gymnasium first to prevent dependency conflicts
 RUN pip install --no-cache-dir --upgrade pip
