@@ -7,14 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt.
+COPY requirements.txt .
 
-# Install gymnasium first to prevent dependency conflicts
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir "gymnasium==0.29.1"
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Verify gymnasium is installed — build fails here if missing
+# 🔥 REMOVE uvloop (important)
+RUN pip uninstall -y uvloop 2>/dev/null || true
+
 RUN python -c "import gymnasium; print('gymnasium', gymnasium.__version__, 'OK')"
 
 COPY models.py .
@@ -35,4 +36,7 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+# 🔥 FORCE asyncio loop
+CMD ["python", "-m", "uvicorn", "app:app",
+     "--host", "0.0.0.0", "--port", "7860",
+     "--loop", "asyncio"]
