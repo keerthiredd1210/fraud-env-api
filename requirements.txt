@@ -1,0 +1,8 @@
+gymnasium==0.29.1
+numpy
+fastapi
+pydantic>=2.0
+openai
+pandas
+python-multipart
+httpx
