@@ -5,15 +5,22 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.responses import HTMLResponse
 
 from environment import FraudDetectionEnv, compute_grade
 from inference import run_episode
 from models import (
-    Action, GraderRequest, GraderResponse, HealthResponse,
-    ResetRequest, ResetResponse, StateResponse,
-    StepRequest, StepResponse, TASK_DEFINITIONS,
+    Action,
+    GraderRequest,
+    GraderResponse,
+    HealthResponse,
+    ResetRequest,
+    ResetResponse,
+    StateResponse,
+    StepRequest,
+    StepResponse,
+    TASK_DEFINITIONS,
 )
 
 _env: Optional[FraudDetectionEnv] = None
@@ -79,7 +86,6 @@ def _build_gradio_app():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting API on port 7860...", flush=True)
-    # Mount Gradio INSIDE lifespan so it runs within uvicorn's event loop
     import gradio as gr
     gradio_app = _build_gradio_app()
     gr.mount_gradio_app(app, gradio_app, path="/demo")
@@ -90,6 +96,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Financial Fraud Defender", lifespan=lifespan)
 
+
+# ---------------- ROOT ----------------
 
 @app.get("/", response_class=HTMLResponse)
 def root():
@@ -104,9 +112,13 @@ def root():
     """)
 
 
+# ---------------- API ----------------
+
 @app.post("/reset", response_model=ResetResponse)
-def reset(req: ResetRequest):
+def reset(req: Optional[ResetRequest] = Body(default=None)):
     global _env, _current_obs
+    if req is None:
+        req = ResetRequest()
     _env = FraudDetectionEnv(task=req.task, seed=req.seed)
     obs, info = _env.reset(seed=req.seed)
     _current_obs = obs.tolist()
@@ -120,9 +132,12 @@ def step(req: StepRequest):
     obs, reward, terminated, truncated, info = env.step(req.action)
     _current_obs = obs.tolist()
     return StepResponse(
-        observation=_current_obs, reward=reward,
-        terminated=terminated, truncated=truncated,
-        info=info, echoed_message=""
+        observation=_current_obs,
+        reward=reward,
+        terminated=terminated,
+        truncated=truncated,
+        info=info,
+        echoed_message=""
     )
 
 
@@ -134,7 +149,11 @@ def state():
 
 @app.get("/health", response_model=HealthResponse)
 def health():
-    return HealthResponse(status="ok", version="1.0.0", tasks=list(TASK_DEFINITIONS.keys()))
+    return HealthResponse(
+        status="ok",
+        version="1.0.0",
+        tasks=list(TASK_DEFINITIONS.keys())
+    )
 
 
 @app.get("/tasks")
@@ -161,19 +180,28 @@ def grader(req: GraderRequest):
 @app.post("/baseline")
 def baseline():
     from inference import rule_based_action
+
     results = {}
     for task in ("easy", "medium", "hard"):
         env = FraudDetectionEnv(task=task, seed=42)
         obs, _ = env.reset(seed=42)
         obs = obs.tolist()
+
         for _ in range(5):
             action = rule_based_action(obs)
             obs, *_ = env.step(action)
             obs = obs.tolist()
+
         grade = compute_grade(task, env._episode_history)
         results[task] = grade
-    return {"tasks": results, "timestamp": datetime.now(timezone.utc).isoformat()}
 
+    return {
+        "tasks": results,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+# ---------------- RUN ----------------
 
 if __name__ == "__main__":
     import uvicorn
