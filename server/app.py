@@ -1,12 +1,12 @@
-import sys
-import os
+"""
+server/app.py — Multi-mode deployment entry point.
+"""
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app import app, serve  # uses your existing app.py
+from app import app
+import uvicorn
 
 def main():
-    serve()
+    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
 
 if __name__ == "__main__":
     main()
