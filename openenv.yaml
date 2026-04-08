@@ -1,0 +1,174 @@
+# ============================================================
+#  OpenEnv specification — Financial Fraud Defender
+#  Validate with: openenv validate openenv.yaml
+# ============================================================
+
+name: fraud-detection-env
+version: "2.0.0"
+entry_point: app:app
+
+description: >-
+  Financial Fraud Defender is a Gymnasium-compliant reinforcement learning
+  environment where an AI agent processes a live stream of financial transactions
+  and decides to APPROVE, BLOCK, or VERIFY each one using 14 pre-computed
+  risk features — exactly like fraud detection systems at Razorpay, Stripe, and
+  Visa. The asymmetric reward function (missing fraud costs -1.0; VERIFY earns
+  +0.70 for caught fraud with only -0.10 friction) teaches agents that OTP
+  verification is often smarter than an outright block.
+
+author: "Financial Fraud Defender Team"
+license: MIT
+
+observation_space:
+  type: Box
+  shape: [14]
+  dtype: float32
+  features:
+    - name: amount
+      description: Transaction amount in USD
+      low: 0.0
+      high: 10000.0
+    - name: hour_of_day
+      description: Hour of transaction normalised to [0, 1]
+      low: 0.0
+      high: 1.0
+    - name: location_match
+      description: 1 if home city, 0 if foreign
+      low: 0.0
+      high: 1.0
+    - name: transactions_last_hour
+      description: Number of transactions by this user in the last hour
+      low: 0.0
+      high: 20.0
+    - name: is_new_merchant
+      description: 1 if never transacted here before
+      low: 0.0
+      high: 1.0
+    - name: risk_score
+      description: Pre-computed composite risk score 0 (safe) to 10 (critical)
+      low: 0.0
+      high: 10.0
+    - name: step
+      description: Current episode step index (0 to 19)
+      low: 0.0
+      high: 20.0
+    - name: merchant_category_index
+      description: Merchant category 0-7 (0=groceries 1=travel 2=entertainment 3=dining 4=electronics 5=healthcare 6=fuel 7=other)
+      low: 0.0
+      high: 7.0
+    - name: velocity_ratio
+      description: Transaction amount divided by user historical average
+      low: 0.0
+      high: 20.0
+    - name: time_since_last_txn
+      description: Minutes since previous transaction
+      low: 0.0
+      high: 1440.0
+    - name: card_present
+      description: 1 if physical card (POS), 0 if online/CNP
+      low: 0.0
+      high: 1.0
+    - name: last_action_1
+      description: Agent action at t-1 (-1 if none, else 0/1/2)
+      low: -1.0
+      high: 2.0
+    - name: last_action_2
+      description: Agent action at t-2 (-1 if none, else 0/1/2)
+      low: -1.0
+      high: 2.0
+    - name: last_action_3
+      description: Agent action at t-3 (-1 if none, else 0/1/2)
+      low: -1.0
+      high: 2.0
+
+action_space:
+  type: Discrete
+  n: 3
+  actions:
+    - id: 0
+      name: APPROVE
+      description: >-
+        Approve the transaction. Reward: +0.50 if legit, -1.00 if fraud.
+    - id: 1
+      name: BLOCK
+      description: >-
+        Block the transaction. Reward: +1.00 if fraud, -0.50 if legit.
+    - id: 2
+      name: VERIFY
+      description: >-
+        Request OTP step-up. Reward: +0.70 if fraud, -0.10 if legit.
+
+reward:
+  range: [-1.0, 1.0]
+  matrix:
+    APPROVE:
+      legit:  +0.50
+      fraud:  -1.00
+    BLOCK:
+      fraud:  +1.00
+      legit:  -0.50
+    VERIFY:
+      fraud:  +0.70
+      legit:  -0.10
+
+max_steps: 20
+
+tasks:
+  easy:
+    description: >-
+      15% fraud rate. Optimise for fraud recall >= 0.65.
+    fraud_rate: 0.15
+    metric: recall
+    threshold: 0.65
+    grader: environment:compute_grade
+
+  medium:
+    description: >-
+      30% fraud rate. Optimise for F1 score >= 0.70.
+    fraud_rate: 0.30
+    metric: f1
+    threshold: 0.70
+    grader: environment:compute_grade
+
+  hard:
+    description: >-
+      50% fraud rate. Optimise for composite score >= 0.72 (F1 - 0.3*FPR).
+    fraud_rate: 0.50
+    metric: composite
+    threshold: 0.72
+    grader: environment:compute_grade
+
+api:
+  base_url: "http://localhost:7860"
+  endpoints:
+    - method: POST
+      path: /reset
+      description: Start new episode; returns initial observation (14 floats)
+    - method: POST
+      path: /step
+      description: Submit action 0/1/2; returns observation, reward, done
+    - method: GET
+      path: /state
+      description: Current episode state without advancing
+    - method: GET
+      path: /health
+      description: Liveness check
+    - method: GET
+      path: /tasks
+      description: List task definitions with action schema
+    - method: POST
+      path: /grader
+      description: Grade episode history; returns score in [0, 1]
+    - method: POST
+      path: /baseline
+      description: Rule-based agent 5 steps all 3 tasks; returns scores
+    - method: GET
+      path: /demo
+      description: Interactive Gradio UI
+
+deployment:
+  platform: "Hugging Face Spaces"
+  port: 7860
+  docker: true
+  base_image: "python:3.11-slim"
+  command: "uvicorn app:app --host 0.0.0.0 --port 7860 --workers 1"
