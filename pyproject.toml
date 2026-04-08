@@ -1,0 +1,15 @@
+[project]
+name = "fraud-env"
+version = "0.1.0"
+description = "Financial Fraud Detection OpenEnv Environment"
+authors = [{name = "Keerthi"}]
+requires-python = ">=3.10"
+
+dependencies = [
+    "fastapi",
+    "pydantic>=2.0",
+    "numpy",
+]
+
+[tool.setuptools]
+py-modules = ["app", "environment", "models", "inference"]
