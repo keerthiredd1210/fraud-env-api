@@ -1,14 +1,10 @@
+from __future__ import annotations
+
 # Fix uvloop/asyncio crash on Python 3.11
 import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-"""
-inference.py — Financial Fraud Defender
-"""
-from __future__ import annotations
 
-# ── CRITICAL: must be first — fixes uvloop crash on Python 3.11 ──
-import asyncio
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+print("[INFO] inference.py started", flush=True)
 
 import os
 import json
@@ -16,6 +12,11 @@ import random
 import argparse
 from typing import Any, Dict, List, Optional
 
+"""
+inference.py — Financial Fraud Defender
+"""
+
+# ✅ SAFE IMPORTS
 try:
     from environment import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES
 except Exception:
