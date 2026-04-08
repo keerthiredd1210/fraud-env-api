@@ -249,17 +249,3 @@ app = gr.mount_gradio_app(app, _build_gradio_app(), path="/demo")
 
 # ---------------- RUN ----------------
 
-def serve():
-    import uvicorn
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=7860,
-        log_level="info",
-        loop="asyncio"
-    )
-
-
-# ✅ FINAL FIX — ONLY this (no main())
-if __name__ == "__main__":
-    serve()
