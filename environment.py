@@ -100,7 +100,6 @@ def _compute_risk_score(amount, avg, hour, usual, loc, new, card, vel, burst):
 
 class FraudDetectionEnv:
     def __init__(self, task="easy", seed=None):
-        # 🔥 LAZY IMPORT (CRITICAL FIX)
         import gymnasium as gym
         from gymnasium import spaces
 
@@ -126,18 +125,29 @@ class FraudDetectionEnv:
         self._step = 0
         self._episode_reward = 0.0
         self._history = []
-
         obs = Observation()
         return obs, {}
 
     def step(self, action):
-        reward = random.random()
+        # ✅ FIX: Step logic uses REWARD_TABLE and task fraud_rate
+        action_name = Action(action).name
+        fraud_rate = self.task_def.fraud_rate
+        is_fraud = self._rng.random() < fraud_rate
+        outcome = "fraud" if is_fraud else "legit"
+
+        reward = REWARD_TABLE[action_name][outcome]
+
+        # ✅ FIX: Store history for grading
+        self._history.append({
+            "action": action_name,
+            "outcome": outcome,
+            "reward": reward,
+        })
+
         self._episode_reward += reward
         self._step += 1
-
         done = self._step >= NUM_STEPS
-
-        obs = Observation(step_num=self._step)
+        obs = Observation(step_num=float(self._step))
 
         return obs, reward, done, False, {}
 
@@ -148,12 +158,23 @@ class FraudDetectionEnv:
         }
 
 
+# ✅ FIX: Reward-based grading with clamping
 def compute_grade(task, history):
+    if len(history) == 0:
+        score = 0.0010
+    else:
+        total_reward = sum(h["reward"] for h in history)
+        max_possible = len(history) * 1.0
+        score = total_reward / max_possible
+
+    # Clamping score between 0.001 and 0.999
+    score = min(0.999, max(0.001, score))
+
     return {
         "task": task,
-        "score": 1.0,
-        "passed": True,
-        "metric": "mock",
+        "score": score,
+        "passed": score > 0.5,
+        "metric": "reward_based",
         "threshold": 0.5,
         "details": {},
     }
