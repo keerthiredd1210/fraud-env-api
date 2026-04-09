@@ -8,9 +8,6 @@ Episode length    : 20 steps
 
 from __future__ import annotations
 
-import asyncio
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-
 import random
 import uuid
 from dataclasses import dataclass
