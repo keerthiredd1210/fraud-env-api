@@ -4,7 +4,7 @@ inference.py — Run agents against the Financial Fraud Defender environment.
 Mandatory stdout format:
   [START] task=<name> env=<benchmark> model=<model>
   [STEP]  step=<n> action=<APPROVE|BLOCK|VERIFY> reward=<0.00> done=<true|false> error=<null>
-  [END]   success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...>
+  [END]   success=<true|false> steps=<n> score=<0.0000> rewards=<r1,r2,...>
 """
 from __future__ import annotations
 
@@ -26,14 +26,14 @@ except ImportError:
         from environement import FraudDetectionEnv, compute_grade, MERCHANT_CATEGORIES  # typo fallback
     except ImportError as _e:
         print(f"[FATAL ERROR] Cannot import environment module: {_e}", flush=True)
-        print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
+        print("[END] success=false steps=0 score=0.0000 rewards=", flush=True)
         sys.exit(0)
 
 try:
     from models import Action, TASK_DEFINITIONS
 except ImportError as _e:
     print(f"[FATAL ERROR] Cannot import models module: {_e}", flush=True)
-    print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
+    print("[END] success=false steps=0 score=0.0000 rewards=", flush=True)
     sys.exit(0)
 
 # ---------------------------------------------------------------------------
@@ -279,11 +279,10 @@ def run_episode(
     except Exception as exc:
         if verbose:
             print(f"[START] task={task} env={ENV_BENCHMARK} model=rule_based", flush=True)
-            print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
+            print(f"[END] success=false steps=0 score=0.0000 rewards=", flush=True)
         raise
 
     client = None
-    # FIX 1: Corrected OpenAI Client initialization
     if agent == "llm":
         try:
             from openai import OpenAI
@@ -342,7 +341,6 @@ def run_episode(
         if done:
             break
 
-    # FIX 3: Safe history and grading
     history = getattr(env, "_episode_history", [])
     try:
         grade = compute_grade(task, history)
@@ -352,9 +350,10 @@ def run_episode(
     rewards_str = ",".join(f"{r:.2f}" for r in all_rewards)
 
     if verbose:
+        # Changed precision to .4f
         print(
             f"[END] success={'true' if grade['passed'] else 'false'} "
-            f"steps={len(all_rewards)} score={grade['score']:.2f} rewards={rewards_str}",
+            f"steps={len(all_rewards)} score={grade['score']:.4f} rewards={rewards_str}",
             flush=True,
         )
 
@@ -379,9 +378,11 @@ def main() -> None:
         parser = argparse.ArgumentParser(
             description="Financial Fraud Defender - inference runner"
         )
-        parser.add_argument("--task",  default="easy",
-                            choices=["easy", "medium", "hard"])
-        # FIX 2: Changed default agent to "llm"
+        # Updated default to "all" and added "all" to choices
+        parser.add_argument("--task",  default="all",
+                            choices=["easy", "medium", "hard", "all"])
+        
+        # Default agent is "llm"
         parser.add_argument("--agent", default="llm",
                             choices=["rule_based", "random", "llm"])
         parser.add_argument("--seed",  type=int, default=None)
@@ -389,21 +390,25 @@ def main() -> None:
                             help="Suppress step output; print JSON result")
         args = parser.parse_args()
 
-        result = run_episode(
-            task=args.task,
-            agent=args.agent,
-            seed=args.seed,
-            verbose=not args.quiet,
-        )
+        # Logic to handle "all" tasks
+        tasks = ["easy", "medium", "hard"] if args.task == "all" else [args.task]
 
-        if args.quiet:
-            print(json.dumps(result, indent=2))
+        for task in tasks:
+            result = run_episode(
+                task=task,
+                agent=args.agent,
+                seed=args.seed,
+                verbose=not args.quiet,
+            )
+
+            if args.quiet:
+                print(json.dumps(result, indent=2))
 
     except SystemExit:
         raise
     except Exception as exc:
         print(f"[FATAL ERROR] {exc}", flush=True)
-        print("[END] success=false steps=0 score=0.00 rewards=", flush=True)
+        print("[END] success=false steps=0 score=0.0000 rewards=", flush=True)
         sys.exit(0)
 
 
