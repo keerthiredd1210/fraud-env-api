@@ -8,6 +8,7 @@ Episode length    : 20 steps
 
 from __future__ import annotations
 
+
 import random
 import uuid
 from dataclasses import dataclass
@@ -66,42 +67,12 @@ class Observation:
         return self.to_numpy().tolist()
 
 
-def _zero_obs(step_num: float = 0.0) -> Observation:
-    return Observation(step_num=step_num)
-
-
-def _make_user_profile(rng: random.Random, fraud_rate: float) -> UserProfile:
-    avg_amount = rng.uniform(20.0, 500.0)
-    return UserProfile(
-        user_id=str(uuid.uuid4())[:8],
-        avg_transaction_amount=avg_amount,
-        usual_hours=list(range(8, 20)),
-        preferred_categories=rng.sample(range(len(MERCHANT_CATEGORIES)), 2),
-        home_location=rng.choice(LOCATIONS),
-        fraud_rate=fraud_rate,
-    )
-
-
-def _compute_risk_score(amount, avg, hour, usual, loc, new, card, vel, burst):
-    score = 0
-    if vel > 5: score += 3
-    elif vel > 3: score += 2
-    elif vel > 1.5: score += 1
-    if hour not in usual: score += 1.5
-    if loc < 0.5: score += 2
-    score += new
-    if card < 0.5: score += 0.5
-    score += burst * 1.5
-    return min(10, score)
-
-
 class FraudDetectionEnv:
     def __init__(self, task="easy", seed=None):
         import gymnasium as gym
         from gymnasium import spaces
 
         self.spaces = spaces
-
         self.task_name = task
         self.task_def = TASK_DEFINITIONS[task]
         self._rng = random.Random(seed)
@@ -122,31 +93,55 @@ class FraudDetectionEnv:
         self._step = 0
         self._episode_reward = 0.0
         self._history = []
-        obs = Observation()
-        return obs, {}
+        obs = Observation(step_num=0.0)
+        return obs.to_numpy(), {}
 
     def step(self, action):
-        # ✅ FIX: Step logic uses REWARD_TABLE and task fraud_rate
-        action_name = Action(action).name
-        fraud_rate = self.task_def.fraud_rate
-        is_fraud = self._rng.random() < fraud_rate
-        outcome = "fraud" if is_fraud else "legit"
+        is_fraud = self._rng.random() < self.task_def.fraud_rate
+        
+        # Reward logic based on action
+        if action == 0:    # APPROVE
+            reward = 0.5 if not is_fraud else -1.0
+        elif action == 1:  # BLOCK
+            reward = 1.0 if is_fraud else -0.5
+        elif action == 2:  # VERIFY
+            reward = 0.7 if is_fraud else -0.1
+        else:
+            reward = 0.0
 
-        reward = REWARD_TABLE[action_name][outcome]
-
-        # ✅ FIX: Store history for grading
-        self._history.append({
-            "action": action_name,
-            "outcome": outcome,
-            "reward": reward,
-        })
+        # Uncertainty bonus for VERIFY in mid-risk scenarios
+        if action == 2 and 0.4 <= reward <= 0.7:
+            reward += 0.1
 
         self._episode_reward += reward
         self._step += 1
-        done = self._step >= NUM_STEPS
-        obs = Observation(step_num=float(self._step))
+        
+        # Store history for grading (tracking raw action and fraud status)
+        self._history.append({
+            "action": action,
+            "is_fraud": is_fraud,
+            "reward": reward
+        })
 
-        return obs, reward, done, False, {}
+        done = self._step >= NUM_STEPS
+
+        # Generate meaningful risk features
+        current_vel = self._rng.uniform(0.5, 5)
+        obs = Observation(
+            amount=self._rng.uniform(10, 1000),
+            risk_score=min(10, (
+                3 * (1 if self._rng.choice([0.0, 1.0]) == 0 else 0) +
+                2 * (current_vel > 2.5) +
+                self._rng.uniform(0, 2)
+            )),
+            velocity_ratio=current_vel,
+            location_match=self._rng.choice([0.0, 1.0]),
+            transactions_last_hour=self._rng.uniform(0, 10),
+            card_present=self._rng.choice([0.0, 1.0]),
+            step_num=float(self._step)
+        )
+
+        return obs.to_numpy(), reward, done, False, {}
 
     def get_state(self):
         return {
@@ -155,23 +150,55 @@ class FraudDetectionEnv:
         }
 
 
-# ✅ FIX: Reward-based grading with clamping
 def compute_grade(task, history):
-    if len(history) == 0:
-        score = 0.0010
-    else:
-        total_reward = sum(h["reward"] for h in history)
-        max_possible = len(history) * 1.0
-        score = total_reward / max_possible
+    if not history:
+        return {"task": task, "score": 0.001, "passed": False}
 
-    # Clamping score between 0.001 and 0.999
-    score = min(0.999, max(0.001, score))
+    tp = fp = fn = tn = 0
+    for entry in history:
+        action = entry["action"]
+        fraud = entry["is_fraud"]
+
+        if action == 1 and fraud: 
+            tp += 1
+        elif action == 1 and not fraud: 
+            fp += 1
+        elif action == 0 and fraud: 
+            fn += 1
+        elif action == 0 and not fraud: 
+            tn += 1
+        elif action == 2 and fraud:
+            tp += 0.7
+        elif action == 2 and not fraud:
+            fp += 0.1
+
+    precision = tp / (tp + fp + 1e-6)
+    recall = tp / (tp + fn + 1e-6)
+    f1 = 2 * precision * recall / (precision + recall + 1e-6)
+
+    # Grading logic based on task difficulty
+    if task == "easy":
+        score = recall
+        threshold = 0.65
+    elif task == "medium":
+        score = f1
+        threshold = 0.70
+    else:  # hard
+        fpr = fp / (fp + tn + 1e-6)
+        score = f1 - 0.3 * fpr
+        threshold = 0.72
+
+    score = float(min(0.999, max(0.001, score)))
 
     return {
         "task": task,
         "score": score,
-        "passed": score > 0.5,
-        "metric": "reward_based",
-        "threshold": 0.5,
-        "details": {},
+        "passed": score >= threshold,
+        "metric": "statistical_f1",
+        "threshold": threshold,
+        "details": {
+            "precision": round(precision, 3), 
+            "recall": round(recall, 3), 
+            "f1": round(f1, 3)
+        },
     }
