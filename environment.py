@@ -143,11 +143,14 @@ class FraudDetectionEnv:
 
         return obs.to_numpy(), reward, done, False, {}
 
-    def get_state(self):
-        return {
-            "step": self._step,
-            "reward": self._episode_reward,
-        }
+  def get_state(self):
+      return {
+        "step": self._step,
+        "episode_reward": self._episode_reward,
+        "task": self.task_name,
+        "observation": None,
+        "episode_history": self._history
+    }
 
 
 def compute_grade(task, history):
