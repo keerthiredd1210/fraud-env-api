@@ -3,7 +3,7 @@ title: Fraud Env Api
 emoji: 💻
 colorFrom: indigo
 colorTo: blue
-sdk: gradio
+sdk: docker
 sdk_version: 6.11.0
 app_file: app.py
 pinned: false
